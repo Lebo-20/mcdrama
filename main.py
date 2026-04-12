@@ -46,30 +46,53 @@ class Database:
     def create_tables(self):
         conn = self.get_conn()
         cursor = conn.cursor()
+        
+        # 1. Create table with full schema if not exists
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS processed_dramas (
-                book_id TEXT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
+                book_id TEXT UNIQUE,
                 title TEXT,
                 status TEXT,
-                attempts INTEGER DEFAULT 0
+                attempts INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Add columns if they are missing from an old table version
-        try:
-            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS title TEXT")
-        except Exception: pass
         
-        try:
-            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS status TEXT")
-        except Exception: pass
-
-        try:
-            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0")
-        except Exception: pass
+        # 2. Add columns if they are missing from an old table version
+        columns_to_add = [
+            ("title", "TEXT"),
+            ("status", "TEXT"),
+            ("attempts", "INTEGER DEFAULT 0"),
+            ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        ]
         
+        for col_name, col_type in columns_to_add:
+            try:
+                cursor.execute(f"ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+            except Exception as e:
+                logger.debug(f"Column {col_name} already exists or failed: {e}")
+        
+        # 3. Ensure book_id has UNIQUE constraint if not PK or unique
+        try:
+            # Check if book_id is unique
+            cursor.execute("""
+                SELECT 1 FROM pg_constraint 
+                WHERE conname = 'processed_dramas_book_id_key' 
+                OR conname = 'processed_dramas_pkey' AND conkey @> (
+                    SELECT array_agg(attnum) FROM pg_attribute 
+                    WHERE attrelid = 'processed_dramas'::regclass AND attname = 'book_id'
+                )
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE processed_dramas ADD CONSTRAINT processed_dramas_book_id_key UNIQUE (book_id)")
+        except Exception as e:
+            logger.debug(f"Failed to add unique constraint to book_id: {e}")
+            
         conn.commit()
         cursor.close()
         conn.close()
+        logger.info("✅ Database schema verified and updated.")
         
     def is_processed(self, book_id, title=None):
         conn = self.get_conn()
@@ -78,7 +101,7 @@ class Database:
         cursor.execute("SELECT status, attempts FROM processed_dramas WHERE book_id = %s", (str(book_id),))
         row = cursor.fetchone()
         
-        # Also check by title if provided (as requested by user to store/check titles)
+        # Also check by title if provided
         if not row and title:
             cursor.execute("SELECT status, attempts FROM processed_dramas WHERE title = %s AND status = 'success'", (title,))
             row = cursor.fetchone()
@@ -91,7 +114,7 @@ class Database:
             
         status, attempts = row
         # Skip if success OR if failed after 2 attempts
-        if status == 'success' or attempts >= 2:
+        if status == 'success' or (attempts and attempts >= 2):
             return True
         return False
         
