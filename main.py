@@ -392,7 +392,7 @@ async def process_drama_full(book_id, chat_id, status_msg=None, title=None, thre
     try:
         if status_msg: await status_msg.edit(f"🎬 Processing **{title}**...")
         
-        # 3. Download (pass book_id so downloader can refresh URLs on 403)
+        # 3. Download
         success = await download_all_episodes(episodes, video_dir, book_id=book_id, status_msg=status_msg, title=title)
         if not success:
             if status_msg: await status_msg.edit("❌ Download Gagal.")
@@ -417,8 +417,13 @@ async def process_drama_full(book_id, chat_id, status_msg=None, title=None, thre
             if status_msg: await status_msg.delete()
             return True
         else:
-            if status_msg: await status_msg.edit("❌ Upload Gagal.")
-        if status_msg: await status_msg.edit(f"❌ Error: {e}")
+            if status_msg: await status_msg.edit("❌ Upload Gagal (Telethon Error).")
+            return False
+    except Exception as err:
+        logger.error(f"❌ Critical error in process_drama_full for {title}: {err}")
+        if status_msg:
+            try: await status_msg.edit(f"❌ Error: {str(err)[:100]}")
+            except: pass
         return False
     finally:
         if os.path.exists(temp_dir):

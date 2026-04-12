@@ -40,7 +40,12 @@ async def get_all_episodes(book_id: str, detail: dict = None):
         detail = await get_drama_detail(book_id)
         
     if detail and "episodes" in detail:
-        return detail["episodes"]
+        eps = detail["episodes"]
+        if eps:
+            logger.info(f"✅ Found {len(eps)} episodes for {book_id}")
+            return eps
+    
+    logger.warning(f"⚠️ No episodes found in API response for {book_id}. Response Keys: {list(detail.keys()) if detail else 'None'}")
     return []
 
 async def get_latest_dramas(pages=1):
