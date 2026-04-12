@@ -79,6 +79,11 @@ class Database:
                 cursor.execute(f"ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
             except Exception as e:
                 logger.debug(f"Column {col_name} already exists or failed: {e}")
+
+        # 2.5 Fix old NOT NULL constraint on drama_id if it exists
+        try:
+            cursor.execute("ALTER TABLE processed_dramas ALTER COLUMN drama_id DROP NOT NULL")
+        except Exception: pass
         
         # 3. Ensure book_id has UNIQUE constraint if not PK or unique
         try:
