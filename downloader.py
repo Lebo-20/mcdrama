@@ -87,22 +87,37 @@ async def download_episode_smart(
     client: httpx.AsyncClient, api_client: httpx.AsyncClient,
     book_id: str, ep_num: int, url: str, filepath: str, retries: int = 3
 ) -> bool:
-    """Downloads with retry logic and fresh URL fetching."""
-    from api import get_episode_play_url
-    current_url = url
+    """Downloads with robust 3x retry logic and URL normalization."""
+    from api import get_episode_play_url, fix_url
+    import random
+    
+    current_url = fix_url(url)
+    
     for attempt in range(1, retries + 1):
-        try:
-            success = await download_single(client, current_url, filepath)
-            if success: return True
-        except Exception as e:
-            logger.warning(f"Download error ep {ep_num} (Attempt {attempt}): {e}")
-            if attempt < retries:
-                # Try to get fresh URL from /play endpoint
-                fresh_url = await get_episode_play_url(book_id, ep_num)
-                if fresh_url:
-                    current_url = fresh_url
-                    logger.info(f"🔄 Refreshed URL for episode {ep_num} using /play endpoint.")
-        await asyncio.sleep(2)
+        if not current_url:
+            # If initial URL is empty, try to fetch from /play immediately
+            logger.info(f"🔄 Ep {ep_num}: Initial URL empty, fetching from /play...")
+            current_url = await get_episode_play_url(book_id, ep_num)
+            
+        if not current_url:
+            logger.warning(f"⚠️ Ep {ep_num}: No URL available (Attempt {attempt})")
+        else:
+            try:
+                success = await download_single(client, current_url, filepath)
+                if success: 
+                    logger.info(f"✅ Ep {ep_num}: Download successful.")
+                    return True
+            except Exception as e:
+                logger.warning(f"❌ Ep {ep_num} failed (Attempt {attempt}): {e}")
+
+        if attempt < retries:
+            delay = random.uniform(2, 5)
+            logger.info(f"⏳ Retrying ep {ep_num} in {delay:.1f}s...")
+            await asyncio.sleep(delay)
+            # On second/third attempt, always try to refresh URL from API
+            current_url = await get_episode_play_url(book_id, ep_num)
+            
+    logger.error(f"💀 Ep {ep_num}: All {retries} attempts failed.")
     return False
 
 from utils import get_progress_bar

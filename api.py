@@ -117,33 +117,60 @@ async def search_dramas(keyword: str, pages=1):
     
     return all_dramas
 
+def fix_url(url: str):
+    """Normalizes URL by adding missing protocol or domain."""
+    if not url:
+        return None
+        
+    BASE_DOMAIN = "https://drakula.dramabos.my.id"
+
+    # Fix relative paths like //cdn.com
+    if url.startswith("//"):
+        return "https:" + url
+
+    # Fix relative paths like /api/v1/...
+    if url.startswith("/"):
+        return BASE_DOMAIN + url
+
+    # Fix missing protocol entirely
+    if not url.startswith("http"):
+        return "https://" + url
+
+    return url
+
 async def get_episode_play_url(drama_id: str, episode_no: int):
-    """Fetches playback URL and ensures it has a valid protocol."""
+    """Fetches playback URL with robust extraction and URL fixing."""
     url = f"{BASE_URL}/play/{drama_id}/{episode_no}"
     params = {"lang": "id", "code": AUTH_CODE}
+    
+    logger.info(f"🔍 Fetching Play URL for Drama: {drama_id}, Ep: {episode_no}")
     
     async with httpx.AsyncClient(timeout=20, headers=API_HEADERS) as client:
         try:
             response = await client.get(url, params=params)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("success") and "data" in data:
-                    item = data["data"]
-                    play_url = item.get("play_url") or item.get("url") or item.get("playUrl")
-                    
-                    if play_url:
-                        # Fix URLs starting with //
-                        if play_url.startswith("//"):
-                            play_url = f"https:{play_url}"
-                        # Fix URLs missing protocol entirely
-                        elif not play_url.startswith("http"):
-                            play_url = f"https://{play_url}"
-                        
-                        logger.info(f"🔗 Play URL Ep {episode_no}: {play_url[:60]}...")
-                        return play_url
-            return None
+            if response.status_code != 200:
+                logger.warning(f"⚠️ API Return {response.status_code} for ep {episode_no}")
+                return None
+                
+            data = response.json()
+            if not data.get("success") or "data" not in data:
+                logger.warning(f"⚠️ API Response Success=False for ep {episode_no}")
+                return None
+                
+            item = data["data"]
+            # Look for video URL in multiple possible fields
+            raw_url = item.get("play_url") or item.get("url") or item.get("playUrl") or item.get("video_url")
+            
+            if not raw_url:
+                logger.warning(f"⚠️ No video URL found in JSON for ep {episode_no}")
+                return None
+                
+            fixed_url = fix_url(raw_url)
+            logger.info(f"✅ URL Fixed: {raw_url[:30]}... -> {fixed_url[:60]}...")
+            
+            return fixed_url
         except Exception as e:
-            logger.error(f"Error fetching play URL for {drama_id} ep {episode_no}: {e}")
+            logger.error(f"❌ Error fetching play URL for {drama_id} ep {episode_no}: {e}")
             return None
 
 # MicroDrama Unified Trending/Home Logic
