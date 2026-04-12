@@ -83,18 +83,18 @@ async def get_latest_dramas(pages=1):
     return all_dramas
 
 async def search_dramas(keyword: str, pages=1):
-    """Searches dramas by keyword using /search endpoint."""
+    """Searches dramas by keyword using /search endpoint with 'q' parameter."""
     all_dramas = []
     
     async with httpx.AsyncClient(timeout=30, headers=API_HEADERS) as client:
         for page in range(1, pages + 1):
             url = f"{BASE_URL}/search"
             params = {
+                "q": keyword, # Official param is 'q'
                 "lang": "id",
                 "code": AUTH_CODE,
                 "page": page,
-                "limit": 20,
-                "keyword": keyword
+                "limit": 20
             }
                 
             try:
