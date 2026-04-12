@@ -162,7 +162,25 @@ class BotState:
     is_auto_running = True
     is_processing = False
 
+def clear_sessions():
+    """Deletes all Telegram session files to ensure a fresh start."""
+    logger.info("🧹 Cleaning up session files...")
+    count = 0
+    for file in os.listdir("."):
+        if file.endswith(".session") or file.endswith(".session-journal"):
+            try:
+                os.remove(file)
+                count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete {file}: {e}")
+    if count > 0:
+        logger.info(f"✅ Cleared {count} session files.")
+    else:
+        logger.info("✨ No session files found to clear.")
+
 # Initialize client
+# Clear sessions BEFORE starting the client
+clear_sessions()
 client = TelegramClient('dramabox_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 async def notify_admin_on_start():
