@@ -6,22 +6,31 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from utils import get_progress_bar
+
 async def upload_progress(current, total, event, msg_text="Uploading..."):
     """Callback function for upload progress."""
-    percentage = (current / total) * 100
     try:
+        bar = get_progress_bar(current, total)
         # Avoid flood by updating every few percentages
-        if int(percentage) % 10 == 0:
-            await event.edit(f"{msg_text} {percentage:.1f}%")
-    except:
-        pass
+        # We store last percent in the event object to minimize redundant edits
+        last_percent = getattr(event, '_last_percent', -1)
+        current_percent = int((current / total) * 100)
+        
+        if current_percent >= last_percent + 5 or current == total:
+            event._last_percent = current_percent
+            await event.edit(f"**{msg_text}**\n`{bar}`\n{current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB")
+    except Exception as e:
+        logger.debug(f"Progress edit failed: {e}")
 
 async def upload_drama(client: TelegramClient, chat_id: int, 
                        title: str, description: str, 
-                       poster_url: str, video_path: str):
+                       poster_url: str, video_path: str,
+                       thread_id: int = None):
     """
     Uploads the drama information and merged video to Telegram.
     """
+    logger.info(f"📤 Starting upload: '{title}' to Chat: {chat_id}, Topic/Thread: {thread_id}")
     import subprocess
     import tempfile
     try:
@@ -47,6 +56,7 @@ async def upload_drama(client: TelegramClient, chat_id: int,
             poster_path or poster_url,
             caption=caption,
             parse_mode='md',
+            reply_to=thread_id,
             force_document=False  # Force as PHOTO, not file
         )
         
@@ -54,15 +64,21 @@ async def upload_drama(client: TelegramClient, chat_id: int,
         if poster_path and os.path.exists(poster_path):
             os.remove(poster_path)
         
-        status_msg = await client.send_message(chat_id, "📤 Ekstraksi Thumbnail & Durasi Video...")
+        status_msg = await client.send_message(chat_id, "📤 Ekstraksi Thumbnail & Durasi Video...", reply_to=thread_id)
         
-        # 2. Extract Duration & Dimensions (Fallback directly if fails)
+        # 2. Extract Duration & Dimensions (Async)
         duration = 0
         width = 0
         height = 0
         try:
             ffprobe_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=width,height", "-of", "default=noprint_wrappers=1:nokey=1", video_path]
-            output = subprocess.check_output(ffprobe_cmd, text=True).strip().split('\n')
+            process = await asyncio.create_subprocess_exec(
+                *ffprobe_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await process.communicate()
+            output = stdout.decode().strip().split('\n')
             if len(output) >= 3:
                 width = int(output[0])
                 height = int(output[1])
@@ -70,10 +86,16 @@ async def upload_drama(client: TelegramClient, chat_id: int,
         except Exception as e:
             logger.warning(f"Failed to extract video info: {e}")
 
-        # 3. Extract Thumbnail
+        # 3. Extract Thumbnail (Async)
         thumb_path = os.path.join(tempfile.gettempdir(), f"thumb_{os.path.basename(video_path)}.jpg")
         try:
-            subprocess.run(["ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01.000", "-vframes", "1", thumb_path], capture_output=True)
+            cmd = ["ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01.000", "-vframes", "1", thumb_path]
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await process.wait()
             if not os.path.exists(thumb_path):
                 thumb_path = None
         except Exception as e:
@@ -98,6 +120,7 @@ async def upload_drama(client: TelegramClient, chat_id: int,
             caption=f"🎥 Full Episode: {title}",
             force_document=False, # FORCE IT AS VIDEO STREAM
             thumb=thumb_path,
+            reply_to=thread_id,
             attributes=video_attributes,
             progress_callback=lambda c, t: upload_progress(c, t, status_msg, "Upload Video:"),
             supports_streaming=True
