@@ -139,7 +139,7 @@ def fix_url(url: str):
     return url
 
 async def get_episode_play_url(drama_id: str, episode_no: int):
-    """Fetches playback URL with robust extraction and URL fixing."""
+    """Fetches playback URL by selecting the highest quality from the videos list."""
     url = f"{BASE_URL}/play/{drama_id}/{episode_no}"
     params = {"lang": "id", "code": AUTH_CODE}
     
@@ -149,26 +149,54 @@ async def get_episode_play_url(drama_id: str, episode_no: int):
         try:
             response = await client.get(url, params=params)
             if response.status_code != 200:
-                logger.warning(f"⚠️ API Return {response.status_code} for ep {episode_no}")
                 return None
                 
             data = response.json()
             if not data.get("success") or "data" not in data:
-                logger.warning(f"⚠️ API Response Success=False for ep {episode_no}")
                 return None
                 
-            item = data["data"]
-            # Look for video URL in multiple possible fields
-            raw_url = item.get("play_url") or item.get("url") or item.get("playUrl") or item.get("video_url")
+            resp_data = data["data"]
+            videos = resp_data.get("videos", [])
             
-            if not raw_url:
-                logger.warning(f"⚠️ No video URL found in JSON for ep {episode_no}")
+            if not videos:
+                logger.warning(f"⚠️ No video available for ep {episode_no}")
                 return None
-                
-            fixed_url = fix_url(raw_url)
-            logger.info(f"✅ URL Fixed: {raw_url[:30]}... -> {fixed_url[:60]}...")
             
-            return fixed_url
+            # Use original URL if videos array is empty but url exists (fallback)
+            if not isinstance(videos, list) or len(videos) == 0:
+                raw_url = resp_data.get("url") or resp_data.get("play_url")
+                return fix_url(raw_url) if raw_url else None
+
+            # 🛠 PATCH: Sort by quality (highest first, e.g., 720P > 480P)
+            try:
+                # Filter out items without quality or url
+                valid_videos = [v for v in videos if v.get("url") and v.get("quality")]
+                if not valid_videos:
+                    # Fallback to first video if quality field is missing
+                    raw_url = videos[0].get("url")
+                    return fix_url(raw_url) if raw_url else None
+
+                sorted_videos = sorted(
+                    valid_videos,
+                    key=lambda x: int(str(x["quality"]).upper().replace("P","") or 0),
+                    reverse=True
+                )
+                
+                best_video = sorted_videos[0]
+                video_url = best_video["url"]
+                quality = best_video.get("quality", "Unknown")
+                
+                logger.info(f"✅ Found {len(videos)} qualities. Selected: {quality}")
+                
+                fixed_url = fix_url(video_url)
+                logger.debug(f"🔗 Final URL: {fixed_url}")
+                return fixed_url
+
+            except Exception as sort_err:
+                logger.warning(f"⚠️ Sorting failed, using first available video: {sort_err}")
+                raw_url = videos[0].get("url")
+                return fix_url(raw_url) if raw_url else None
+
         except Exception as e:
             logger.error(f"❌ Error fetching play URL for {drama_id} ep {episode_no}: {e}")
             return None
