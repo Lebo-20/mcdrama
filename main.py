@@ -29,6 +29,12 @@ AUTO_THREAD_ID = int(os.environ.get("AUTO_THREAD_ID", "0")) or None # Topic ID f
 # Database Configuration
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+if not DATABASE_URL:
+    print("❌ ERROR: DATABASE_URL tidak ditemukan di environment atau file .env!")
+    print("👉 Pastikan Anda sudah membuat file .env di server dengan isi DATABASE_URL=...")
+    import sys
+    sys.exit(1)
+
 print("--- BOT CONFIGURATION ---")
 print(f"ADMIN_ID: {ADMIN_ID}")
 print(f"AUTO_CHANNEL: {AUTO_CHANNEL}")
