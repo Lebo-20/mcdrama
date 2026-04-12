@@ -58,6 +58,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS processed_dramas (
                 id SERIAL PRIMARY KEY,
                 book_id TEXT UNIQUE,
+                drama_id TEXT,
                 title TEXT,
                 status TEXT,
                 attempts INTEGER DEFAULT 0,
@@ -65,9 +66,10 @@ class Database:
             )
         ''')
         
-        # 2. Add columns if they are missing from an old table version
+        # 2. Add columns if they are missing
         columns_to_add = [
             ("book_id", "TEXT"),
+            ("drama_id", "TEXT"),
             ("title", "TEXT"),
             ("status", "TEXT"),
             ("attempts", "INTEGER DEFAULT 0"),
@@ -78,42 +80,19 @@ class Database:
             try:
                 cursor.execute(f"ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
             except Exception as e:
-                logger.debug(f"Column {col_name} already exists or failed: {e}")
+                logger.debug(f"Column {col_name} migration info: {e}")
 
-        # 2.5 Fix old NOT NULL constraint on drama_id if it exists
-        try:
-            cursor.execute("ALTER TABLE processed_dramas ALTER COLUMN drama_id DROP NOT NULL")
-        except Exception: pass
-        
-        # 3. Ensure book_id has UNIQUE constraint if not PK or unique
-        try:
-            # Check if book_id is unique
-            cursor.execute("""
-                SELECT 1 FROM pg_constraint 
-                WHERE conname = 'processed_dramas_book_id_key' 
-                OR conname = 'processed_dramas_pkey' AND conkey @> (
-                    SELECT array_agg(attnum) FROM pg_attribute 
-                    WHERE attrelid = 'processed_dramas'::regclass AND attname = 'book_id'
-                )
-            """)
-            if not cursor.fetchone():
-                cursor.execute("ALTER TABLE processed_dramas ADD CONSTRAINT processed_dramas_book_id_key UNIQUE (book_id)")
-        except Exception as e:
-            logger.debug(f"Failed to add unique constraint to book_id: {e}")
-            
         conn.commit()
         cursor.close()
         conn.close()
-        logger.info("✅ Database schema verified and updated.")
+        logger.info("✅ Database schema synchronized.")
         
     def is_processed(self, book_id, title=None):
         conn = self.get_conn()
         cursor = conn.cursor()
-        # Check by book_id
         cursor.execute("SELECT status, attempts FROM processed_dramas WHERE book_id = %s", (str(book_id),))
         row = cursor.fetchone()
         
-        # Also check by title if provided
         if not row and title:
             cursor.execute("SELECT status, attempts FROM processed_dramas WHERE title = %s AND status = 'success'", (title,))
             row = cursor.fetchone()
@@ -121,38 +100,56 @@ class Database:
         cursor.close()
         conn.close()
         
-        if not row:
-            return False
-            
+        if not row: return False
         status, attempts = row
-        # Skip if success OR if failed after 2 attempts
-        if status == 'success' or (attempts and attempts >= 2):
-            return True
-        return False
+        return status == 'success' or (attempts and attempts >= 2)
         
     def mark_success(self, book_id, title):
+        if not book_id:
+            logger.warning(f"⚠️ Skip mark_success: book_id is empty for '{title}'")
+            return
+            
+        logger.info(f"💾 Saving success record for drama_id/book_id: {book_id}")
         conn = self.get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO processed_dramas (book_id, title, status, attempts) 
-            VALUES (%s, %s, 'success', 1)
-            ON CONFLICT(book_id) DO UPDATE SET status = 'success', attempts = processed_dramas.attempts + 1
-        """, (str(book_id), title))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        try:
+            cursor.execute("""
+                INSERT INTO processed_dramas (book_id, drama_id, title, status, attempts) 
+                VALUES (%(bid)s, %(did)s, %(title)s, 'success', 1)
+                ON CONFLICT(book_id) DO UPDATE SET 
+                    status = 'success', 
+                    attempts = processed_dramas.attempts + 1,
+                    drama_id = EXCLUDED.drama_id
+            """, {'bid': str(book_id), 'did': str(book_id), 'title': title})
+            conn.commit()
+        except Exception as e:
+            logger.error(f"❌ Database Error (mark_success): {e}")
+        finally:
+            cursor.close()
+            conn.close()
         
     def mark_failed(self, book_id, title):
+        if not book_id:
+            logger.warning(f"⚠️ Skip mark_failed: book_id is empty for '{title}'")
+            return
+            
+        logger.info(f"💾 Saving failure record for drama_id/book_id: {book_id}")
         conn = self.get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO processed_dramas (book_id, title, status, attempts) 
-            VALUES (%s, %s, 'failed', 1)
-            ON CONFLICT(book_id) DO UPDATE SET attempts = processed_dramas.attempts + 1
-        """, (str(book_id), title))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        try:
+            cursor.execute("""
+                INSERT INTO processed_dramas (book_id, drama_id, title, status, attempts) 
+                VALUES (%(bid)s, %(did)s, %(title)s, 'failed', 1)
+                ON CONFLICT(book_id) DO UPDATE SET 
+                    attempts = processed_dramas.attempts + 1,
+                    drama_id = EXCLUDED.drama_id
+            """, {'bid': str(book_id), 'did': str(book_id), 'title': title})
+            conn.commit()
+        except Exception as e:
+            logger.error(f"❌ Database Error (mark_failed): {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
