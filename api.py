@@ -118,12 +118,9 @@ async def search_dramas(keyword: str, pages=1):
     return all_dramas
 
 async def get_episode_play_url(drama_id: str, episode_no: int):
-    """Fetches playback URL for a specific episode using /play/:id/:no."""
+    """Fetches playback URL and ensures it has a valid protocol."""
     url = f"{BASE_URL}/play/{drama_id}/{episode_no}"
-    params = {
-        "lang": "id",
-        "code": AUTH_CODE
-    }
+    params = {"lang": "id", "code": AUTH_CODE}
     
     async with httpx.AsyncClient(timeout=20, headers=API_HEADERS) as client:
         try:
@@ -132,7 +129,18 @@ async def get_episode_play_url(drama_id: str, episode_no: int):
                 data = response.json()
                 if data.get("success") and "data" in data:
                     item = data["data"]
-                    return item.get("play_url") or item.get("url") or item.get("playUrl")
+                    play_url = item.get("play_url") or item.get("url") or item.get("playUrl")
+                    
+                    if play_url:
+                        # Fix URLs starting with //
+                        if play_url.startswith("//"):
+                            play_url = f"https:{play_url}"
+                        # Fix URLs missing protocol entirely
+                        elif not play_url.startswith("http"):
+                            play_url = f"https://{play_url}"
+                        
+                        logger.info(f"🔗 Play URL Ep {episode_no}: {play_url[:60]}...")
+                        return play_url
             return None
         except Exception as e:
             logger.error(f"Error fetching play URL for {drama_id} ep {episode_no}: {e}")
