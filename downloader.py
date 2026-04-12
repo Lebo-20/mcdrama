@@ -87,7 +87,8 @@ async def download_episode_smart(
     client: httpx.AsyncClient, api_client: httpx.AsyncClient,
     book_id: str, ep_num: int, url: str, filepath: str, retries: int = 3
 ) -> bool:
-    """Downloads with retry logic."""
+    """Downloads with retry logic and fresh URL fetching."""
+    from api import get_episode_play_url
     current_url = url
     for attempt in range(1, retries + 1):
         try:
@@ -96,9 +97,11 @@ async def download_episode_smart(
         except Exception as e:
             logger.warning(f"Download error ep {ep_num} (Attempt {attempt}): {e}")
             if attempt < retries:
-                # On 403 or error, try to refresh URLs
-                fresh_map = await fetch_fresh_urls(book_id, api_client)
-                if ep_num in fresh_map: current_url = fresh_map[ep_num]
+                # Try to get fresh URL from /play endpoint
+                fresh_url = await get_episode_play_url(book_id, ep_num)
+                if fresh_url:
+                    current_url = fresh_url
+                    logger.info(f"🔄 Refreshed URL for episode {ep_num} using /play endpoint.")
         await asyncio.sleep(2)
     return False
 

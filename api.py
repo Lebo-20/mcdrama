@@ -83,12 +83,12 @@ async def get_latest_dramas(pages=1):
     return all_dramas
 
 async def search_dramas(keyword: str, pages=1):
-    """Searches dramas by keyword."""
+    """Searches dramas by keyword using /search endpoint."""
     all_dramas = []
     
     async with httpx.AsyncClient(timeout=30, headers=API_HEADERS) as client:
         for page in range(1, pages + 1):
-            url = f"{BASE_URL}/list"
+            url = f"{BASE_URL}/search"
             params = {
                 "lang": "id",
                 "code": AUTH_CODE,
@@ -116,6 +116,27 @@ async def search_dramas(keyword: str, pages=1):
                 break
     
     return all_dramas
+
+async def get_episode_play_url(drama_id: str, episode_no: int):
+    """Fetches playback URL for a specific episode using /play/:id/:no."""
+    url = f"{BASE_URL}/play/{drama_id}/{episode_no}"
+    params = {
+        "lang": "id",
+        "code": AUTH_CODE
+    }
+    
+    async with httpx.AsyncClient(timeout=20, headers=API_HEADERS) as client:
+        try:
+            response = await client.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success") and "data" in data:
+                    item = data["data"]
+                    return item.get("play_url") or item.get("url") or item.get("playUrl")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching play URL for {drama_id} ep {episode_no}: {e}")
+            return None
 
 # MicroDrama Unified Trending/Home Logic
 async def get_trending_dramas():
