@@ -61,6 +61,7 @@ class Database:
         
         # 2. Add columns if they are missing from an old table version
         columns_to_add = [
+            ("book_id", "TEXT"),
             ("title", "TEXT"),
             ("status", "TEXT"),
             ("attempts", "INTEGER DEFAULT 0"),
@@ -142,11 +143,11 @@ class Database:
         cursor.close()
         conn.close()
 
-db = Database(DATABASE_URL)
-
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+db = Database(DATABASE_URL)
 
 # Initialize Bot State
 class BotState:
