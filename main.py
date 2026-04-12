@@ -418,8 +418,8 @@ async def auto_mode_loop():
             logger.info("🔍 Scanning Latest List (/list page 1)...")
             latest_dramas = await get_latest_dramas(pages=1) or []
             
-            # --- SOURCE 2: iDrama/Trending Sections ---
-            logger.info("🔍 Scanning Trending/iDrama...")
+            # --- SOURCE 2: MicroDrama Trending Sections ---
+            logger.info("🔍 Scanning MicroDrama Trending...")
             trending_dramas = await get_trending_dramas() or []
             
             # Rotation Logic: Interleave (selang-seling) antara List dan Trending

@@ -112,34 +112,12 @@ async def search_dramas(keyword: str, pages=1):
     
     return all_dramas
 
-# iDrama API (API 2) Configuration
-BASE_IDRAMA = "https://idrama.dramabos.my.id"
-
+# MicroDrama Unified Trending/Home Logic
 async def get_trending_dramas():
-    """Fetches trending/home dramas using iDrama API as bridge."""
-    all_dramas = []
-    async with httpx.AsyncClient(timeout=10, headers=API_HEADERS) as client:
-        try:
-            # 1. Fetch home
-            home_url = f"{BASE_IDRAMA}/home"
-            params = {"lang": "id"}
-            resp = await client.get(home_url, params=params)
-            if resp.status_code == 200:
-                home_data = resp.json()
-                tabs = home_data.get("data", [])
-                if tabs:
-                    # Get first tab content
-                    tab_id = tabs[0].get("id")
-                    tab_resp = await client.get(f"{BASE_IDRAMA}/tab/{tab_id}", params={"lang": "id"})
-                    if tab_resp.status_code == 200:
-                        tab_data = tab_resp.json()
-                        sections = tab_data.get("data", [])
-                        for sec in sections:
-                            items = sec.get("data", [])
-                            if isinstance(items, list): all_dramas.extend(items)
-        except: pass
-    return all_dramas
+    """Fetches trending/home dramas using MicroDrama API Page 1 as default."""
+    # Since MicroDrama API is now the primary, we fallback to latest page 1 for trending
+    return await get_latest_dramas(pages=1)
 
 async def get_home_dramas():
-    """Alias for trending/home dramas to maintain compatibility with main logic."""
+    """Alias for trending/home dramas using MicroDrama API."""
     return await get_trending_dramas()
