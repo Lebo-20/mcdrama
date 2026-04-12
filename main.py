@@ -50,10 +50,23 @@ class Database:
             CREATE TABLE IF NOT EXISTS processed_dramas (
                 book_id TEXT PRIMARY KEY,
                 title TEXT,
-                status TEXT, -- 'success', 'failed'
+                status TEXT,
                 attempts INTEGER DEFAULT 0
             )
         ''')
+        # Add columns if they are missing from an old table version
+        try:
+            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS title TEXT")
+        except Exception: pass
+        
+        try:
+            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS status TEXT")
+        except Exception: pass
+
+        try:
+            cursor.execute("ALTER TABLE processed_dramas ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0")
+        except Exception: pass
+        
         conn.commit()
         cursor.close()
         conn.close()
