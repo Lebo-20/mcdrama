@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # MicroDramas API Configuration
-BASE_URL = "https://drakula.dramabos.my.id/api/microdrama"
+BASE_URL = "https://drakula.dramabos.online/api/microdrama"
 AUTH_CODE = "A8D6AB170F7B89F2182561D3B32F390D"
 
 # Headers for API calls
@@ -122,7 +122,7 @@ def fix_url(url: str):
     if not url:
         return None
         
-    BASE_DOMAIN = "https://drakula.dramabos.my.id"
+    BASE_DOMAIN = "https://drakula.dramabos.online"
 
     # Fix relative paths like //cdn.com
     if url.startswith("//"):

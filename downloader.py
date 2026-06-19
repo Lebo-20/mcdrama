@@ -17,7 +17,7 @@ BROWSER_HEADERS = {
 }
 
 # ─── API config ─────────────────────────────────────────────────────
-API_BASE = "https://drakula.dramabos.my.id/api/microdrama"
+API_BASE = "https://drakula.dramabos.online/api/microdrama"
 AUTH_CODE = "A8D6AB170F7B89F2182561D3B32F390D"
 
 # ────────────────────────────────────────────────────────────────────
