@@ -442,7 +442,7 @@ async def auto_mode_loop():
             continue
             
         try:
-            interval = 5 if is_initial_run else 10
+            interval = 5 if is_initial_run else 120
             logger.info(f"🔍 Scanning sources (Next scan in {interval}m)...")
             
             # --- SOURCE 1: Latest List (Page 1) ---
@@ -513,7 +513,9 @@ async def auto_mode_loop():
                         except: pass
                     
                     # Pause between tasks to avoid spam/heavy load
-                    await asyncio.sleep(15)
+                    # Cooldown 30 minutes after processing
+                    logger.info("💤 Auto-mode cooling down for 30 minutes...")
+                    await asyncio.sleep(30 * 60)
             
             is_initial_run = False
             # Wait for next scan interval
